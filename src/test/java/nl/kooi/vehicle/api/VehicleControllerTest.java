@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.RequestBuilder;
 
 import java.util.List;
 
@@ -46,11 +47,7 @@ class VehicleControllerTest {
                                 createVehicleWithId(3L)
                         ));
 
-        var jsonString = mockMvc.perform(get("/vehicles"))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        var jsonString = getResponseString(get("/vehicles"));
 
         var typeRef = new TypeReference<List<VehicleDTO>>() {
         };
@@ -68,21 +65,13 @@ class VehicleControllerTest {
         when(vehicleService.saveVehicle(any(Vehicle.class)))
                 .thenReturn(createVehicleWithId(1L));
 
-        var vehicleDto = new VehicleDTO(null,
-                "Volkswagen",
-                "Golf",
-                CAR,
-                "12345");
+        var vehicleDto = createDTOWithId(null);
 
         var jsonIn = mapper.writeValueAsString(vehicleDto);
 
-        var jsonOut = mockMvc.perform(post("/vehicles")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonIn))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        var jsonOut = getResponseString(post("/vehicles")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(jsonIn));
 
         var dto = mapper.readValue(jsonOut, VehicleDTO.class);
 
@@ -94,15 +83,54 @@ class VehicleControllerTest {
         when(vehicleService.getVehicle(anyLong()))
                 .thenReturn(createVehicleWithId(1L));
 
-        var jsonString = mockMvc.perform(get("/vehicles/1"))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        var jsonString = getResponseString(get("/vehicles/1"));
 
         var dto = mapper.readValue(jsonString, VehicleDTO.class);
 
         assertDTO(1L, dto);
+    }
+
+
+    @Test
+    void updateVehicle() throws Exception {
+        when(vehicleService.updateVehicle(any(Vehicle.class)))
+                .thenReturn(createVehicleWithId(1L));
+
+        var vehicleDto = createDTOWithId(null);
+
+        var jsonIn = mapper.writeValueAsString(vehicleDto);
+
+        var jsonOut = getResponseString(put("/vehicles/1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(jsonIn));
+
+        var dto = mapper.readValue(jsonOut, VehicleDTO.class);
+
+        assertDTO(1L, dto);
+    }
+
+    @Test
+    void deleteById() throws Exception {
+        doNothing().when(vehicleService).deleteVehicle(anyLong());
+
+        mockMvc.perform(delete("/vehicles/1"))
+                .andExpect(status().isOk());
+    }
+
+    private String getResponseString(RequestBuilder requestBuilder) throws Exception {
+        return mockMvc.perform(requestBuilder)
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+    }
+
+    private static VehicleDTO createDTOWithId(Long id) {
+        return new VehicleDTO(id,
+                "Volkswagen",
+                "Golf",
+                CAR,
+                "12345");
     }
 
     private static void assertDTO(Long id, VehicleDTO dto) {
@@ -120,17 +148,5 @@ class VehicleControllerTest {
                 "Golf",
                 CAR,
                 new LicensePlateDetails(1L, "12345"));
-    }
-
-    @Test
-    void updateVehicle() {
-    }
-
-    @Test
-    void deleteById() throws Exception {
-        doNothing().when(vehicleService).deleteVehicle(anyLong());
-
-        mockMvc.perform(delete("/vehicles/1"))
-                .andExpect(status().isOk());
     }
 }
