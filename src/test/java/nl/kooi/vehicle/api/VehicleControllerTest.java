@@ -6,13 +6,19 @@ import nl.kooi.vehicle.api.dto.VehicleDTO;
 import nl.kooi.vehicle.domain.LicensePlateDetails;
 import nl.kooi.vehicle.domain.Vehicle;
 import nl.kooi.vehicle.domain.service.VehicleService;
+import nl.kooi.vehicle.exception.NotFoundException;
+import nl.kooi.vehicle.exception.VehicleException;
+import nl.kooi.vehicle.mapper.VehicleMapperImpl;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.RequestBuilder;
+import org.springframework.test.web.servlet.ResultMatcher;
 
 import java.util.List;
 
@@ -25,7 +31,8 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(VehicleController.class)
+@WebMvcTest({VehicleController.class, ControllerAdvice.class})
+@Import(VehicleMapperImpl.class)
 class VehicleControllerTest {
 
     @Autowired
@@ -79,6 +86,26 @@ class VehicleControllerTest {
     }
 
     @Test
+    void saveVehicle_vehicleException() throws Exception {
+        when(vehicleService.saveVehicle(any(Vehicle.class)))
+                .thenThrow(new VehicleException("Vehicle exception"));
+
+        var vehicleDto = createDTOWithId(null);
+
+        var jsonIn = mapper.writeValueAsString(vehicleDto);
+
+        var jsonString = getResponseString(post("/vehicles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonIn)
+                , status().isBadRequest());
+
+        var dto = mapper.readValue(jsonString, ProblemDetail.class);
+        assertThat(dto).isNotNull();
+        assertThat(dto.getDetail()).isEqualTo("Vehicle exception");
+        assertThat(dto.getStatus()).isEqualTo(400);
+    }
+
+    @Test
     void getVehicleById() throws Exception {
         when(vehicleService.getVehicle(anyLong()))
                 .thenReturn(createVehicleWithId(1L));
@@ -90,6 +117,19 @@ class VehicleControllerTest {
         assertDTO(1L, dto);
     }
 
+    @Test
+    void getVehicleById_notFound() throws Exception {
+        when(vehicleService.getVehicle(anyLong()))
+                .thenThrow(new NotFoundException("Vehicle not found"));
+
+        var jsonString = getResponseString(get("/vehicles/1"), status().isNotFound());
+
+        var dto = mapper.readValue(jsonString, ProblemDetail.class);
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.getDetail()).isEqualTo("Vehicle not found");
+        assertThat(dto.getStatus()).isEqualTo(404);
+    }
 
     @Test
     void updateVehicle() throws Exception {
@@ -118,8 +158,12 @@ class VehicleControllerTest {
     }
 
     private String getResponseString(RequestBuilder requestBuilder) throws Exception {
+        return getResponseString(requestBuilder, status().isOk());
+    }
+
+    private String getResponseString(RequestBuilder requestBuilder, ResultMatcher matcher) throws Exception {
         return mockMvc.perform(requestBuilder)
-                .andExpect(status().isOk())
+                .andExpect(matcher)
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
